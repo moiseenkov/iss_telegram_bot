@@ -66,8 +66,9 @@ def get_iss_position(message: Message):
         _position = response.json()['iss_position']
         bot.send_location(message.chat.id, **_position)
         bot.send_message(chat_id=message.chat.id,
-                         text=f'Current ISS position is: '
-                              f'{_position["latitude"]}°, {_position["longitude"]}°')
+                         text=f'*Current ISS position is: '
+                              f'{_position["latitude"]}°, {_position["longitude"]}°*',
+                         parse_mode='Markdown')
     return response
 
 
