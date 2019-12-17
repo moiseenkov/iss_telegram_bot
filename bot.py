@@ -4,6 +4,7 @@ Bot provides some information about current state of International Space Station
 import logging
 import time
 from collections import defaultdict
+from datetime import datetime
 
 import requests
 import telebot
@@ -14,6 +15,7 @@ from telebot.types import Message
 
 URL_ISS_LOCATION = 'http://api.open-notify.org/iss-now.json'
 URL_ISS_CREW = 'http://api.open-notify.org/astros.json'
+URL_ISS_PASS_TIMES = 'http://api.open-notify.org/iss-pass.json'
 
 logging.basicConfig(filename='iss_bot.log',
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -38,8 +40,10 @@ def keyboard():
     _keyboard = types.ReplyKeyboardMarkup(row_width=1)
     button_position = types.KeyboardButton(text='Position')
     button_crew = types.KeyboardButton(text='Crew')
+    button_pass_times = types.KeyboardButton(text='Pass times', request_location=True)
     _keyboard.add(button_position)
     _keyboard.add(button_crew)
+    _keyboard.add(button_pass_times)
     return _keyboard
 
 
@@ -77,19 +81,46 @@ def get_iss_crew(message: Message):
     return response
 
 
+def get_iss_pass_times(message: Message):
+    """
+    Shows times when ISS will have the same position as user
+    Args:
+        message: telebot.types.Message instance
+    """
+    parameters = {
+        'lat': message.location.latitude,
+        'lon': message.location.longitude,
+    }
+    response = requests.get(url=URL_ISS_PASS_TIMES, params=parameters)
+    if response.status_code == 200:
+        pass_times = (item['risetime'] for item in response.json()['response'])
+        pass_times = (datetime.fromtimestamp(item) for item in pass_times)
+        pass_times = [item.strftime('%d.%m.%Y %H:%M:%S') for item in pass_times]
+        bot.send_message(chat_id=message.chat.id,
+                         text='\n'.join(pass_times),
+                         reply_markup=keyboard())
+    return response
+
+
 HANDLERS = defaultdict(str, **{
     'Position': get_iss_position,
     'Crew': get_iss_crew,
+    'Location': get_iss_pass_times,
 })
 
 
-@bot.message_handler(content_types=['text'])
+@bot.message_handler(content_types=['text', 'location'])
 def text_messages(message: Message):
     """
     Buttons handler
     """
     try:
-        handler = HANDLERS[message.text]
+        if message.content_type == 'text':
+            handler = HANDLERS[message.text]
+        elif message.content_type == 'location':
+            handler = HANDLERS['Location']
+        else:
+            handler = None
         if not handler:
             bot.send_message(chat_id=message.chat.id, text='Push one of buttons',
                              reply_markup=keyboard())
