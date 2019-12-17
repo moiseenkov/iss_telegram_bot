@@ -116,7 +116,7 @@ def text_messages(message: Message):
 if __name__ == '__main__':
     while True:
         try:
-            bot.polling(timeout=123, none_stop=True)
+            bot.polling(timeout=60, none_stop=True)
         except requests.exceptions.ConnectionError as ex:
             logging.exception('Exception: %s', ex)
             time.sleep(5)
