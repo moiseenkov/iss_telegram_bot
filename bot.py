@@ -1,10 +1,14 @@
+"""
+Bot provides some information about current state of International Space Station
+"""
 import logging
 import time
+from collections import defaultdict
 
 import requests
 import telebot
 from environs import Env
-from telebot import apihelper
+from telebot import apihelper, types
 from telebot.types import Message
 
 
@@ -19,36 +23,89 @@ env.read_env()
 TOKEN = env('TOKEN')
 PROXY = env('PROXY')
 
-
 if PROXY:
     apihelper.proxy = dict(https=PROXY)
 
 bot = telebot.TeleBot(TOKEN, threaded=False)
 
 
-@bot.message_handler(commands=['where'])
-def send_iss_position(message: Message):
-    msg = f'/where command from user {message.from_user}'
+def keyboard():
+    """
+    Function generates keyboard
+    Returns: InlineKeyboardMarkup instance
+    """
+    _keyboard = types.InlineKeyboardMarkup(row_width=1)
+    button_position = types.InlineKeyboardButton(text='Position', callback_data='position', )
+    _keyboard.add(button_position)
+    return _keyboard
+
+
+@bot.message_handler(content_types=['text'])
+def any_message(message: Message):
+    """
+    Processing any user message and provide keyboard
+    Args:
+        message: telebot.types.Message instance
+    """
+    bot.send_message(chat_id=message.chat.id,
+                     text='Hello! How can I help you?',
+                     reply_markup=keyboard())
+
+
+def get_iss_position(message: Message):
+    """
+    Shows current geo position of ISS
+    Args:
+        message: telebot.types.Message instance
+    """
+    response = requests.get(URL_ISS_LOCATION)
+    if response.status_code == 200:
+        _position = response.json()['iss_position']
+        bot.send_location(message.chat.id, **_position)
+        bot.send_message(chat_id=message.chat.id,
+                         text=f'Current ISS position is: '
+                              f'{_position["latitude"]}°, {_position["longitude"]}°')
+    return response
+
+
+HANDLERS = defaultdict(None, **{
+    'position': get_iss_position,
+})
+
+
+@bot.callback_query_handler(func=lambda call: True)
+def buttons_handler(call):
+    """
+    Buttons handler
+    """
     try:
-        response = requests.get(URL_ISS_LOCATION)
+        handler = HANDLERS[call.data]
+        if handler is None:
+            return
+
+        response = handler(call.message)
         if response.status_code == 200:
-            pos = response.json()['iss_position']
-            bot.send_location(message.chat.id, **pos)
-            bot.send_message(message.chat.id, text=f'Current ISS position is: {pos["latitude"]}°, {pos["longitude"]}°')
-            logging.info(msg + ' OK')
+            logging.info('Position request from user {%s} OK', call.message.from_user)
         else:
-            raise ConnectionError
-    except ConnectionError as conn:
-        msg += f' FAILED due to response status code {response.status_code} from {URL_ISS_LOCATION};' \
-               f' response data: {response.json()}'
-        logging.error(msg)
+            bot.send_message(chat_id=call.message.chat.id,
+                             text='Sorry, I lost connection. Try again later please')
+            logging.error('Position request from user % FAILED due to response code %d from %s. '
+                          'Response data: %s', call.message.from_user, response.status_code,
+                          URL_ISS_LOCATION,
+                          response.json())
     except Exception as exception:
-        logging.exception(msg + f' FAILED with exception {exception}')
+        logging.error('Position request from user %s FAILED with exception %s',
+                      call.message.from_user, exception)
+        bot.send_message(chat_id=call.message.chat.id,
+                         text='Sorry, I don\'t feel good now. Try again later please')
+    finally:
+        bot.send_message(chat_id=call.message.chat.id, text='Menu:', reply_markup=keyboard())
 
 
-while True:
-    try:
-        bot.polling(timeout=123, none_stop=True)
-    except requests.exceptions.ConnectionError as ex:
-        logging.exception(f'Exception: {ex}')
-        time.sleep(5)
+if __name__ == '__main__':
+    while True:
+        try:
+            bot.polling(timeout=123, none_stop=True)
+        except requests.exceptions.ConnectionError as ex:
+            logging.exception('Exception: %s', ex)
+            time.sleep(5)
