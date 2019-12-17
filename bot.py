@@ -13,6 +13,7 @@ from telebot.types import Message
 
 
 URL_ISS_LOCATION = 'http://api.open-notify.org/iss-now.json'
+URL_ISS_CREW = 'http://api.open-notify.org/astros.json'
 
 logging.basicConfig(filename='iss_bot.log',
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -36,7 +37,9 @@ def keyboard():
     """
     _keyboard = types.InlineKeyboardMarkup(row_width=1)
     button_position = types.InlineKeyboardButton(text='Position', callback_data='position', )
+    button_crew = types.InlineKeyboardButton(text='Crew', callback_data='crew', )
     _keyboard.add(button_position)
+    _keyboard.add(button_crew)
     return _keyboard
 
 
@@ -68,8 +71,24 @@ def get_iss_position(message: Message):
     return response
 
 
+def get_iss_crew(message: Message):
+    """
+    Shows current crew of ISS
+    Args:
+        message: telebot.types.Message instance
+    """
+    response = requests.get(URL_ISS_CREW)
+    if response.status_code == 200:
+        data = response.json()
+        names = [human['name'] for human in data['people']]
+        text = f'*Current crew is {data["number"]} humans:*\n' + ',\n'.join(names)
+        bot.send_message(chat_id=message.chat.id, text=text, parse_mode='Markdown')
+    return response
+
+
 HANDLERS = defaultdict(None, **{
     'position': get_iss_position,
+    'crew': get_iss_crew,
 })
 
 
