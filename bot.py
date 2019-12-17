@@ -35,24 +35,12 @@ def keyboard():
     Function generates keyboard
     Returns: InlineKeyboardMarkup instance
     """
-    _keyboard = types.InlineKeyboardMarkup(row_width=1)
-    button_position = types.InlineKeyboardButton(text='Position', callback_data='position', )
-    button_crew = types.InlineKeyboardButton(text='Crew', callback_data='crew', )
+    _keyboard = types.ReplyKeyboardMarkup(row_width=1)
+    button_position = types.KeyboardButton(text='Position')
+    button_crew = types.KeyboardButton(text='Crew')
     _keyboard.add(button_position)
     _keyboard.add(button_crew)
     return _keyboard
-
-
-@bot.message_handler(content_types=['text'])
-def any_message(message: Message):
-    """
-    Processing any user message and provide keyboard
-    Args:
-        message: telebot.types.Message instance
-    """
-    bot.send_message(chat_id=message.chat.id,
-                     text='Hello! How can I help you?',
-                     reply_markup=keyboard())
 
 
 def get_iss_position(message: Message):
@@ -68,7 +56,8 @@ def get_iss_position(message: Message):
         bot.send_message(chat_id=message.chat.id,
                          text=f'*Current ISS position is: '
                               f'{_position["latitude"]}°, {_position["longitude"]}°*',
-                         parse_mode='Markdown')
+                         parse_mode='Markdown',
+                         reply_markup=keyboard())
     return response
 
 
@@ -83,43 +72,45 @@ def get_iss_crew(message: Message):
         data = response.json()
         names = [human['name'] for human in data['people']]
         text = f'*Current crew is {data["number"]} humans:*\n' + ',\n'.join(names)
-        bot.send_message(chat_id=message.chat.id, text=text, parse_mode='Markdown')
+        bot.send_message(chat_id=message.chat.id, text=text, parse_mode='Markdown',
+                         reply_markup=keyboard())
     return response
 
 
-HANDLERS = defaultdict(None, **{
-    'position': get_iss_position,
-    'crew': get_iss_crew,
+HANDLERS = defaultdict(str, **{
+    'Position': get_iss_position,
+    'Crew': get_iss_crew,
 })
 
 
-@bot.callback_query_handler(func=lambda call: True)
-def buttons_handler(call):
+@bot.message_handler(content_types=['text'])
+def text_messages(message: Message):
     """
     Buttons handler
     """
     try:
-        handler = HANDLERS[call.data]
-        if handler is None:
-            return
-
-        response = handler(call.message)
+        handler = HANDLERS[message.text]
+        if not handler:
+            bot.send_message(chat_id=message.chat.id, text='Push one of buttons',
+                             reply_markup=keyboard())
+        response = handler(message)
         if response.status_code == 200:
-            logging.info('Position request from user {%s} OK', call.message.from_user)
+            logging.info('Position request from user {%s} OK', message.from_user)
         else:
-            bot.send_message(chat_id=call.message.chat.id,
-                             text='Sorry, I lost connection. Try again later please')
+            bot.send_message(chat_id=message.chat.id,
+                             text='Sorry, I lost connection. Try again later please',
+                             reply_markup=keyboard())
             logging.error('Position request from user % FAILED due to response code %d from %s. '
-                          'Response data: %s', call.message.from_user, response.status_code,
+                          'Response data: %s', message.from_user, response.status_code,
                           URL_ISS_LOCATION,
                           response.json())
+
     except Exception as exception:
         logging.error('Position request from user %s FAILED with exception %s',
-                      call.message.from_user, exception)
-        bot.send_message(chat_id=call.message.chat.id,
-                         text='Sorry, I don\'t feel good now. Try again later please')
-    finally:
-        bot.send_message(chat_id=call.message.chat.id, text='Menu:', reply_markup=keyboard())
+                      message.from_user, exception)
+        bot.send_message(chat_id=message.chat.id,
+                         text='Sorry, I don\'t feel good now. Try again later please',
+                         reply_markup=keyboard())
 
 
 if __name__ == '__main__':
