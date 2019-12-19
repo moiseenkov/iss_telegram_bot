@@ -121,9 +121,12 @@ def text_messages(message: Message):
             handler = HANDLERS['Location']
         else:
             handler = None
+
         if not handler:
             bot.send_message(chat_id=message.chat.id, text='Push one of buttons',
                              reply_markup=keyboard())
+            return
+
         response = handler(message)
         if response.status_code == 200:
             logging.info('Position request from user {%s} OK', message.from_user)
@@ -131,10 +134,13 @@ def text_messages(message: Message):
             bot.send_message(chat_id=message.chat.id,
                              text='Sorry, I lost connection. Try again later please',
                              reply_markup=keyboard())
-            logging.error('Position request from user % FAILED due to response code %d from %s. '
-                          'Response data: %s', message.from_user, response.status_code,
-                          URL_ISS_LOCATION,
-                          response.json())
+            logging.error('Message \'{message}\' user {user} FAILED due to response code '
+                          '{status_code} from {url}. Response data: {data}',
+                          message=message.text,
+                          user=message.from_user,
+                          status_code=response.status_code,
+                          url=URL_ISS_LOCATION,
+                          data=response.json())
 
     except Exception as exception:
         logging.error('Position request from user %s FAILED with exception %s',
